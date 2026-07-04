@@ -20,7 +20,7 @@ class App {
   }
 
   private routes(): void {
-    this.app.use('/api', routes);
+    this.app.use('/v1/api', routes);
   }
 
   private errorHandler(): void {
