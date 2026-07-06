@@ -30,7 +30,7 @@ export class AuthService {
       });
       if (!userData) throw new Error("USER_DONT_EXISTS");
 
-      const isMatchPassword = bcrypt.compare(
+      const isMatchPassword = await bcrypt.compare(
         data.password,
         userData.password_hash,
       );
@@ -43,6 +43,8 @@ export class AuthService {
       };
     } catch (error) {
       throw error;
+    } finally {
+      await queryRunner.release();
     }
   }
 
