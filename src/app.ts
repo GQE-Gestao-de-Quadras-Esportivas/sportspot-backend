@@ -2,6 +2,7 @@ import "reflect-metadata";
 import express, { Application, ErrorRequestHandler } from "express";
 import cors from "cors";
 import { routes } from "./routes/index.js";
+import cookieParser from "cookie-parser";
 
 
 class App {
@@ -21,6 +22,7 @@ class App {
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization']
     }));
+    this.app.use(cookieParser());
     this.app.use(express.json());
   }
 

@@ -16,4 +16,6 @@ authRoutes.post('/login', (req, res) => authController.login(req, res));
 
 authRoutes.post('/register', (req, res) => authController.register(req, res));
 
+authRoutes.post('/refresh', authController.refresh);
+
 export { authRoutes }

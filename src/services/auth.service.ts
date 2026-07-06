@@ -2,10 +2,21 @@ import { DataSource } from "typeorm";
 import { AuthUsers } from "../entities/AuthUsers.js";
 import bcrypt from "bcrypt";
 import { UserDetails } from "../entities/UserDetails.js";
+import jwt from "jsonwebtoken";
 
 export interface LoginUserDTO {
   email: string;
   password: string;
+}
+
+export interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: {
+    id: string;
+    email: string;
+    user_type: string;
+  };
 }
 
 export interface CreateUserDTO {
@@ -20,7 +31,7 @@ export interface CreateUserDTO {
 export class AuthService {
   constructor(private dataSource: DataSource) {}
 
-  async loginUser(data: LoginUserDTO) {
+  async loginUser(data: LoginUserDTO): Promise<LoginResponse> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
 
@@ -36,10 +47,30 @@ export class AuthService {
       );
       if (!isMatchPassword) throw new Error("WRONG_PASSWORD");
 
+      const secret = process.env.JWT_SECRET || "secret-token";
+      const refreshSecret =
+        process.env.JWT_REFRESH_SECRET || "refresh-secret-token";
+
+      const accessToken = jwt.sign({ role: userData.user_type }, secret, {
+        subject: String(userData.id),
+        expiresIn: "15m",
+      });
+
+      const refreshToken = jwt.sign({
+        role: userData.user_type
+      }, refreshSecret, {
+        subject: String(userData.id),
+        expiresIn: "7d",
+      });
+
       return {
-        id: userData.id,
-        email: userData.email,
-        user_type: userData.user_type,
+        accessToken,
+        refreshToken,
+        user: {
+          id: userData.id,
+          email: userData.email,
+          user_type: userData.user_type,
+        },
       };
     } catch (error) {
       throw error;
@@ -87,6 +118,29 @@ export class AuthService {
       throw error;
     } finally {
       await queryRunner.release();
+    }
+  }
+
+  async refreshSession(refreshToken: string): Promise<{ accessToken: string }> {
+    if (!refreshToken) throw new Error("REFRESH_TOKEN_NOT_PROVIDED");
+
+    try {
+      const refreshSecret =
+        process.env.JWT_REFRESH_SECRET || "refresh-secret-token";
+
+      const decoded = jwt.verify(refreshToken, refreshSecret);
+      const userId = (decoded as any).sub;
+      const userRole = (decoded as any).role;
+
+      const secret = process.env.JWT_SECRET || "secret-token";
+      const accessToken = jwt.sign({ role: userRole }, secret, {
+        subject: String(userId),
+        expiresIn: "15m",
+      });
+
+      return { accessToken };
+    } catch (error) {
+      throw new Error("INVALID_REFRESH_TOKEN");
     }
   }
 }

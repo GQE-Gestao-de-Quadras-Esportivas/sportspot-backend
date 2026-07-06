@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { AuthService } from "../services/auth.service.js";
-import jwt from "jsonwebtoken";
 
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -14,33 +13,23 @@ export class AuthController {
         .json({ message: "Email ou senha não informados!" });
 
     try {
-      const user = await this.authService.loginUser({
-        email,
-        password,
-      });
+      const { accessToken, refreshToken, user } =
+        await this.authService.loginUser({
+          email,
+          password,
+        });
 
-      const secret = process.env.JWT_SECRET || "sportspot-token";
-      const refreshSecret =
-        process.env.JWT_REFRESH_SECRET || "sportspot-refresh-token";
-
-      const accessToken = jwt.sign({ role: user.user_type || "user" }, secret, {
-        subject: String(user.id),
-        expiresIn: "15m",
-      });
-
-      const refreshToken = jwt.sign({}, refreshSecret, {
-        subject: String(user.id),
-        expiresIn: "7d",
+      res.cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
       return res.status(201).json({
         message: "Usuário autenticado com sucesso!",
         accessToken,
-        user: {
-          id: user.id,
-          email: user.email,
-          user_type: user.user_type
-        },
+        user,
       });
     } catch (error: any) {
       if (error.message === "USER_DONT_EXISTS") {
@@ -112,6 +101,30 @@ export class AuthController {
       return res
         .status(500)
         .json({ message: "Erro interno ao processar o cadastro." });
+    }
+  };
+
+  refresh = async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const refreshToken = req.cookies.refreshToken;
+
+      const { accessToken } =
+        await this.authService.refreshSession(refreshToken);
+
+      return res.status(200).json({ accessToken });
+    } catch (error: any) {
+      if (
+        error.message === "REFRESH_TOKEN_NOT_PROVIDED" ||
+        error.message === "INVALID_REFRESH_TOKEN"
+      ) {
+        return res
+          .status(401)
+          .json({ message: "Sessão expirada. Faça login novamente." });
+      }
+
+      return res
+        .status(500)
+        .json({ message: "Erro interno ao atualizar sessão." });
     }
   };
 }
