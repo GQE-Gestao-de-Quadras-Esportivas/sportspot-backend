@@ -12,6 +12,8 @@ authRoutes.get('/', (req: Request, res: Response) => {
     res.json({ message: 'Rota de autenticação funcionando!' });
 });
 
+authRoutes.post('/login', (req, res) => authController.login(req, res));
+
 authRoutes.post('/register', (req, res) => authController.register(req, res));
 
 export { authRoutes }

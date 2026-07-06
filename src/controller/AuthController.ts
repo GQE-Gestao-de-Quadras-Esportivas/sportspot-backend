@@ -4,6 +4,38 @@ import { AuthService } from "../services/AuthService.js";
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  login = async (req: Request, res: Response): Promise<Response> => {
+    const { email, password } = req.body;
+
+    if (!email || !password)
+      return res
+        .status(400)
+        .json({ message: "Email ou senha não informados!" });
+
+    try {
+      await this.authService.loginUser({
+        email,
+        password,
+      });
+
+      return res
+        .status(201)
+        .json({ message: "Usuário autenticado com sucesso!" });
+    } catch (error: any) {
+      if (error.message === "USER_DONT_EXISTS") {
+        return res.status(400).json({ message: "Não existe usuário cadastrado com este email." });
+      }
+      if (error.message === "WRONG_PASSWORD") {
+        return res.status(400).json({ message: "O email ou a senha estão errados." });
+      }
+
+      console.error(error);
+      return res
+        .status(500)
+        .json({ message: "Erro interno ao processar o cadastro." });
+    }
+  };
+
   register = async (req: Request, res: Response): Promise<Response> => {
     const {
       name,
