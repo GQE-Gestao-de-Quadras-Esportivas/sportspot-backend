@@ -14,6 +14,7 @@ export interface LoginResponse {
   refreshToken: string;
   user: {
     id: string;
+    name: string;
     email: string;
     user_type: string;
   };
@@ -47,11 +48,16 @@ export class AuthService {
       );
       if (!isMatchPassword) throw new Error("WRONG_PASSWORD");
 
+      const userDetails = await queryRunner.manager.findOne(UserDetails, {
+        where: { id: userData.id }
+      })
+      if (!userDetails) throw new Error("DATA_CONFLICT");
+
       const secret = process.env.JWT_SECRET || "secret-token";
       const refreshSecret =
         process.env.JWT_REFRESH_SECRET || "refresh-secret-token";
 
-      const accessToken = jwt.sign({ role: userData.user_type }, secret, {
+      const accessToken = jwt.sign({ name: userDetails.name, role: userData.user_type }, secret, {
         subject: String(userData.id),
         expiresIn: "15m",
       });
@@ -68,6 +74,7 @@ export class AuthService {
         refreshToken,
         user: {
           id: userData.id,
+          name: userDetails.name,
           email: userData.email,
           user_type: userData.user_type,
         },
@@ -105,6 +112,7 @@ export class AuthService {
 
       const newUserDetail = queryRunner.manager.create(UserDetails, {
         id: savedAuthUser.id,
+        name: data.name,
         document: data.document,
         phone_number: data.phone_number,
         date_of_birth: new Date(data.date_of_birth),

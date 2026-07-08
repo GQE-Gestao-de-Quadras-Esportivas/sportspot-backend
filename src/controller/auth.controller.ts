@@ -42,6 +42,11 @@ export class AuthController {
           .status(400)
           .json({ message: "O email ou a senha estão errados." });
       }
+      if (error.message === "DATA_CONFLICT") {
+        return res
+          .status(400)
+          .json({ message: "Seus dados estão corrompidos em nosso banco de dados." });
+      }
 
       console.error(error);
       return res

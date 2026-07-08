@@ -6,6 +6,9 @@ export class UserDetails {
   @PrimaryColumn("uuid")
   id!: string;
 
+  @Column({ type: "varchar", length: 254, nullable: false })
+  name!: string;
+
   @Column({ type: "varchar", length: 254, nullable: false, unique: true })
   document!: string;
 
