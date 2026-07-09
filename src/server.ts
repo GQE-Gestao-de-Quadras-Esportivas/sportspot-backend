@@ -12,6 +12,7 @@ async function startServer() {
     app.listen(PORT, () => {
       console.log(`🚀 Servidor rodando em: http://localhost:${PORT}`);
       console.log(`🔒 Rota de teste: http://localhost:${PORT}/api/auth`);
+      console.log(`&& Rota de quadras: http://localhost:${PORT}/api/courts`);
     });
   } catch (error) {
     console.error("❌ Falha ao iniciar o servidor:", error);

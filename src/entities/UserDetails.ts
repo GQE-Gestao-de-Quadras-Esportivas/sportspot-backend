@@ -1,5 +1,6 @@
-import { Entity, Column, PrimaryColumn, OneToOne, JoinColumn } from "typeorm";
+import { Entity, Column, PrimaryColumn, OneToOne, JoinColumn, OneToMany } from "typeorm";
 import { AuthUsers } from "./AuthUsers.js";
+import { Courts } from "./Courts.js";
 
 @Entity("users_details")
 export class UserDetails {
@@ -29,4 +30,7 @@ export class UserDetails {
   @OneToOne(() => AuthUsers, (user) => user.details, { onDelete: "CASCADE" })
   @JoinColumn({ name: "id" })
   user!: AuthUsers;
+
+  @OneToMany(() => Courts, (court) => court.landlord)
+  courts!: Courts[];
 }
