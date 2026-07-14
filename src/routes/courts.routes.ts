@@ -1,11 +1,15 @@
 import { Router, Request, Response } from "express";
+import { ensureAuthenticated } from "../middlewares/auth.middleware.js";
+import { CourtController } from "../controller/court.controller.js";
+import { CourtService } from "../services/court.service.js";
+import { AppDataSource } from "../data-source.js";
 
 const courtsRoutes = Router();
 
-courtsRoutes.get('/', (req: Request, res: Response) => {
-    res.json({
-        message: 'Rota de quadras funcionando!'
-    });
-});
+const courtService = new CourtService(AppDataSource);
+const courtController = new CourtController(courtService);
+
+courtsRoutes.get('/', ensureAuthenticated, (req, res) => courtController.list(req, res));
+courtsRoutes.post('/register', ensureAuthenticated, (req, res) => courtController.register(req, res));
 
 export { courtsRoutes }
