@@ -12,4 +12,6 @@ const courtController = new CourtController(courtService);
 courtsRoutes.get('/', ensureAuthenticated, (req, res) => courtController.list(req, res));
 courtsRoutes.post('/register', ensureAuthenticated, (req, res) => courtController.register(req, res));
 
+courtsRoutes.post('/:courtId/new/appointment', (req, res) => courtController.createAppointment(req, res));
+
 export { courtsRoutes }

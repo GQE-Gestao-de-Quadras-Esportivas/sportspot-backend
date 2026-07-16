@@ -1,5 +1,6 @@
 import { DataSource } from "typeorm";
 import { Courts } from "../entities/Courts.js";
+import { Appointments } from "../entities/Appointments.js";
 
 export interface CreateCourtDTO {
   court_name: string;
@@ -15,6 +16,12 @@ export interface CreateCourtDTO {
   descricao: string;
   resources: string[];
   landlord_id: string;
+}
+
+export interface CreateAppointmentDTO {
+  court_id: string;
+  start_time: string;
+  end_time: string;
 }
 
 export class CourtService {
@@ -55,6 +62,26 @@ export class CourtService {
       const savedCourt = await queryRunner.manager.save(Courts, newCourt);
 
       return { id: savedCourt.id };
+    } catch (error: any) {
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async createAppointment(data: CreateAppointmentDTO) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      const newAppointment = await queryRunner.manager.create(Appointments, {
+        start_time: data.start_time,
+        end_time: data.end_time,
+        court_id: {id: data.court_id}
+      })
+      const savedAppointment = await queryRunner.manager.save(Appointments, newAppointment);
+
+      return { id: savedAppointment.id };
     } catch (error: any) {
       throw error;
     } finally {

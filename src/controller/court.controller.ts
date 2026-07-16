@@ -59,7 +59,7 @@ export class CourtController {
     if (!userID)
       return res.status(404).json({ message: "Usuário não encontrado." });
 
-    const resources = [temCobertura, temIluminacao, temVestiario]
+    const resources = [temCobertura, temIluminacao, temVestiario];
     try {
       const newCourt = await this.courtService.registerCourt({
         landlord_id: userID,
@@ -74,7 +74,7 @@ export class CourtController {
         city,
         state,
         descricao,
-        resources
+        resources,
       });
 
       return res.status(201).json({
@@ -86,6 +86,38 @@ export class CourtController {
       return res
         .status(500)
         .json({ message: "Erro interno ao processar o cadastro." });
+    }
+  };
+
+  createAppointment = async (
+    req: Request,
+    res: Response,
+  ): Promise<Response> => {
+    const { startTime, endTime } = req.body;
+    const { courtId } = req.params;
+
+    if (!startTime || !endTime)
+      return res
+        .status(400)
+        .json({ message: "Todos os campos são obrigatórios." });
+    if (!courtId)
+      return res
+        .status(400)
+        .json({ message: "O ID da quadra não foi passado nos parâmetros." });
+
+    try {
+      const newAppointment = await this.courtService.createAppointment({
+        court_id: String(courtId),
+        start_time: startTime,
+        end_time: endTime
+      })
+
+      return res.status(201).json({ message: "Agendamento feito com sucesso.", appointment: newAppointment })
+    } catch (error: any) {
+      console.error(error);
+      return res
+        .status(500)
+        .json({ message: "Erro interno ao processar o agendamento." });
     }
   };
 }
