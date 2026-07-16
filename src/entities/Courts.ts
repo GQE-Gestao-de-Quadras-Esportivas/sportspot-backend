@@ -59,6 +59,6 @@ export class Courts {
   @CreateDateColumn({ name: "created_at", type: "timestamp" })
   created_At!: Date;
 
-  @OneToMany(() => Appointments, (appointment) => appointment.court_id)
+  @OneToMany(() => Appointments, (appointment) => appointment.court)
   appointments!: Appointments[];
 }

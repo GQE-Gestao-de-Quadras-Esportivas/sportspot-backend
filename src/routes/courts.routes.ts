@@ -9,9 +9,10 @@ const courtsRoutes = Router();
 const courtService = new CourtService(AppDataSource);
 const courtController = new CourtController(courtService);
 
-courtsRoutes.get('/', ensureAuthenticated, (req, res) => courtController.list(req, res));
-courtsRoutes.post('/register', ensureAuthenticated, (req, res) => courtController.register(req, res));
+courtsRoutes.get("/", ensureAuthenticated, (req, res) => courtController.list(req, res));
+courtsRoutes.post("/register", ensureAuthenticated, (req, res) => courtController.register(req, res));
 
-courtsRoutes.post('/:courtId/new/appointment', (req, res) => courtController.createAppointment(req, res));
+courtsRoutes.get("/appointments", ensureAuthenticated, (req, res) => courtController.listAppointments(req, res));
+courtsRoutes.post("/:courtId/new/appointment", ensureAuthenticated, (req, res) => courtController.createAppointment(req, res));
 
-export { courtsRoutes }
+export { courtsRoutes };

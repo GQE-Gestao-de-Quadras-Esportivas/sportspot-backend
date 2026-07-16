@@ -19,6 +19,22 @@ export class CourtController {
         .json({ message: "Erro interno ao processar os dados." });
     }
   };
+  
+  listAppointments = async (req: Request, res: Response): Promise<Response> => {
+    const userID = req.user.id;
+    if (!userID)
+      return res.status(404).json({ message: "Usuário não encontrado." });
+
+    try {
+      const appointments = await this.courtService.listAppointments(userID);
+      return res.status(200).json(appointments);
+    } catch (error: any) {
+      console.error(error);
+      return res
+        .status(500)
+        .json({ message: "Erro interno ao processar os dados." });
+    }
+  };
 
   register = async (req: Request, res: Response): Promise<Response> => {
     const {

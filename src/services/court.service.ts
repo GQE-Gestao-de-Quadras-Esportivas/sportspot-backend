@@ -1,4 +1,4 @@
-import { DataSource } from "typeorm";
+import { DataSource, In } from "typeorm";
 import { Courts } from "../entities/Courts.js";
 import { Appointments } from "../entities/Appointments.js";
 
@@ -33,9 +33,43 @@ export class CourtService {
         where: { landlord: { id: userID } },
       });
 
-      return courts;
+      const groundTextMap: Record<string, string> = {
+        grama_natural: "Grama natural",
+        grama_sintetica: "Grama sintética",
+        parquet: "Madeira / Parquet",
+        cimento: "Cimento polido",
+        areia: "Areia",
+      };
+
+      const modifiedCourts = courts.map(({ ground_type, ...rest }) => ({
+        ...rest,
+        ground_type: groundTextMap[ground_type], // Substitua pelo valor desejado
+      }));
+
+      return modifiedCourts;
     } catch (err) {
       throw new Error("Erro ao listar as quadras do usuário.");
+    }
+  }
+
+  async listAppointments(userID: string) {
+    try {
+      const courts = await this.dataSource.manager.find(Courts, {
+        where: { landlord: { id: userID } },
+      });
+      if (!courts || courts.length === 0) return [];
+
+      const courtIds = courts.map((court) => court.id);
+      const appointments = await this.dataSource.manager.find(Appointments, {
+        where: {
+          court_id: In(courtIds),
+        },
+      });
+
+      return appointments;
+    } catch (err) {
+      console.error(err);
+      throw new Error("Erro ao listar os agendamentos.");
     }
   }
 
@@ -77,9 +111,12 @@ export class CourtService {
       const newAppointment = await queryRunner.manager.create(Appointments, {
         start_time: data.start_time,
         end_time: data.end_time,
-        court_id: {id: data.court_id}
-      })
-      const savedAppointment = await queryRunner.manager.save(Appointments, newAppointment);
+        court: { id: data.court_id},
+      });
+      const savedAppointment = await queryRunner.manager.save(
+        Appointments,
+        newAppointment,
+      );
 
       return { id: savedAppointment.id };
     } catch (error: any) {
