@@ -66,7 +66,7 @@ export class CourtService {
         },
       });
 
-      return appointments;
+      return { courts, appointments };
     } catch (err) {
       console.error(err);
       throw new Error("Erro ao listar os agendamentos.");
