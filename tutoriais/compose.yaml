@@ -1,0 +1,71 @@
+# SportSpot - ambiente com Docker Compose
+#
+# Uso normal (recomendado na demonstração): só o RabbitMQ em Docker; os
+# serviços Node.js rodam em terminais separados (veja o README).
+#     docker compose up -d
+#
+# Ambiente completo com um só comando (RabbitMQ, API REST, GraphQL,
+# consumidores e gateway). Só o gateway publica porta para fora:
+#     docker compose --profile completo up -d --build
+#
+# Para apagar filas e mensagens guardadas:  docker compose down -v
+
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: sportspot-rabbitmq
+    ports:
+      - "127.0.0.1:5672:5672"     # protocolo AMQP: os programas se conectam aqui
+      - "127.0.0.1:15672:15672"   # painel web de gerenciamento (guest/guest, só local)
+    volumes:
+      - rabbitmq-dados:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ---------------- perfil "completo" (opcional) ----------------
+  rest:
+    profiles: [completo]
+    build: .
+    command: ["node", "rest/server.js"]
+    environment:
+      REST_HOST: 0.0.0.0                       # dentro da rede interna do Compose
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  graphql:
+    profiles: [completo]
+    build: .
+    command: ["node", "graphql/server.js"]
+    environment:
+      GRAPHQL_HOST: 0.0.0.0
+      REST_URL: http://rest:3001
+    depends_on: [rest]
+
+  consumidores:
+    profiles: [completo]
+    build: .
+    command: ["node", "mensageria/todos.js"]
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  gateway:
+    profiles: [completo]
+    build: .
+    command: ["node", "gateway/server.js"]
+    environment:
+      REST_URL: http://rest:3001
+      GRAPHQL_URL: http://graphql:3002
+    ports:
+      - "3000:3000"                           # único serviço exposto para fora
+    depends_on: [rest, graphql]
+
+volumes:
+  rabbitmq-dados:
