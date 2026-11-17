@@ -15,7 +15,7 @@ export class AppointmentController {
   // POST /courts/:id/appointments → 201 + Location
   create = async (req: Request, res: Response) => {
     const input = validateAppointment(req.body);
-    const appointment = await this.appointmentService.create(String(req.params.id), input, req.user.id);
+    const appointment = await this.appointmentService.create(String(req.params.id), input, req.user.id, req.requestId);
     res.location(`${config.basePath}/appointments/${appointment.id}`).status(201).json(appointment);
   };
 
@@ -35,7 +35,7 @@ export class AppointmentController {
 
   // DELETE /appointments/:id → 204 (cancela a reserva)
   cancel = async (req: Request, res: Response) => {
-    await this.appointmentService.cancel(String(req.params.id), req.user.id);
+    await this.appointmentService.cancel(String(req.params.id), req.user.id, req.requestId);
     res.status(204).end();
   };
 }

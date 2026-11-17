@@ -1,4 +1,4 @@
-# SportSpot — API REST (Parte 1)
+# SportSpot — API REST e mensageria (Partes 1 e 2)
 
 API de gestão de quadras esportivas: proprietários cadastram quadras e jogadores reservam horários.
 Express 5 + TypeScript + TypeORM + PostgreSQL.
@@ -6,16 +6,36 @@ Express 5 + TypeScript + TypeORM + PostgreSQL.
 ## Pré-requisitos
 
 - Node.js 22 ou superior
+- Docker Desktop em execução (para o RabbitMQ)
 - PostgreSQL 14 ou superior, com um banco chamado `sportspot`
   - com Docker: `docker run -d --name sportspot-db -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=sportspot -p 5432:5432 postgres:16`
 
 ## Como executar
 
 ```bash
+docker compose up -d        # RabbitMQ; painel em http://localhost:15672 (guest / guest)
+
 npm install
 cp .env.example .env        # no Windows: copy .env.example .env
 npm start                   # API em http://127.0.0.1:3000/v1/api
+
+cd mensageria && npm install && cd ..
 ```
+
+Em mais dois terminais, suba os consumidores:
+
+```bash
+cd mensageria && npm run notificacoes
+cd mensageria && npm run faturamento
+```
+
+| Processo | Comando | Porta |
+|---|---|---|
+| RabbitMQ | `docker compose up -d` | 5672 (AMQP), 15672 (painel) |
+| PostgreSQL | já instalado ou via Docker | 5432 |
+| API REST | `npm start` | 3000, só em 127.0.0.1 |
+| Consumidor de notificações | `cd mensageria && npm run notificacoes` | não abre porta |
+| Consumidor de faturamento | `cd mensageria && npm run faturamento` | não abre porta |
 
 As tabelas são criadas automaticamente na primeira execução (`synchronize: true`).
 
@@ -94,6 +114,59 @@ registra em cada linha de log:
 ```
 [rest] [cliente-1794873610629] POST /v1/api/courts -> 201 (12 ms)
 ```
+
+## Mensageria (Parte 2)
+
+Depois de gravar uma reserva no banco, a API publica um evento na exchange topic `sportspot.eventos`
+e responde ao cliente **sem esperar** os consumidores.
+
+| Chave de roteamento | Quando |
+|---|---|
+| `agendamento.criado` | `POST /courts/:id/appointments` |
+| `agendamento.cancelado` | `DELETE /appointments/:id` |
+
+Formato do evento (mensagem `persistent`, `messageId` = `eventId`, cabeçalho `x-request-id`):
+
+```json
+{
+  "eventId": "12fa6bf9-...",
+  "type": "agendamento.criado",
+  "occurredAt": "2026-11-17T00:18:19.000Z",
+  "requestId": "cliente-1794874699256",
+  "data": { "appointmentId": "...", "courtId": "...", "courtName": "Arena Central",
+            "customerEmail": "...", "landlordEmail": "...", "startTime": "...", "endTime": "...", "price": 240 }
+}
+```
+
+| Consumidor | Fila | Ligação | Efeito |
+|---|---|---|---|
+| Notificações | `notificacoes` | `agendamento.*` (todos) | "envia" e-mail ao jogador e ao dono (log + `mensageria/dados/emails-enviados.log`) |
+| Faturamento | `faturamento` | `agendamento.criado` (só parte) | soma a receita prevista por quadra em `mensageria/dados/faturamento.json` |
+
+Em todos os consumidores:
+- filas `durable`, mensagens `persistent`, confirmação manual (`ack`) e `prefetch` 10;
+- **nova tentativa limitada**: em caso de erro, a mensagem vai para `<fila>.retry`, espera 2 s e volta.
+  Na 3ª falha, sofre `nack` sem requeue e a DLX `sportspot.dlx` a entrega em `<fila>.dlq`;
+- **idempotência**: o `eventId` processado é registrado em `mensageria/dados/processados-<fila>.json`.
+  Uma segunda entrega do mesmo evento é confirmada sem repetir o efeito;
+- o `X-Request-Id` aparece em cada linha de log.
+
+### Demonstração
+
+```bash
+npm run cliente            # cena 3: reservas reais disparam os eventos; veja os logs dos dois consumidores
+npm run evento:falha       # cena 4: e-mail inválido → 3 tentativas → notificacoes.dlq
+npm run evento:duplicado   # cena 4: mesma mensagem 2 vezes → efeito uma vez só
+```
+
+### Riscos conhecidos
+
+- **Publicação fora da transação:** se o RabbitMQ estiver fora do ar, a reserva é gravada, a API responde 201,
+  e o evento se perde (fica só registrado no log da API). O padrão Outbox resolveria isso.
+- **Consistência eventual:** logo depois do 201, o e-mail ainda pode não ter saído.
+- **Idempotência em arquivo:** se o processo cair entre aplicar o efeito e registrar o `eventId`, o efeito pode se repetir.
+  Em produção, efeito e registro iriam na mesma transação do banco do consumidor.
+- O faturamento não recebe `agendamento.cancelado` (ligação parcial, de propósito). Por isso, a receita é bruta.
 
 ## Segurança da porta
 

@@ -47,6 +47,9 @@ export class AuthController {
     if (password !== confirm_password) {
       throw unprocessable("senhas-diferentes", "Senhas diferentes", "A senha e a confirmação não coincidem.");
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw unprocessable("email-invalido", "E-mail inválido", "Informe um e-mail no formato nome@dominio.com.");
+    }
     if (isNaN(Date.parse(date_of_birth))) {
       throw unprocessable("data-invalida", "Data inválida", "date_of_birth deve estar no formato AAAA-MM-DD.");
     }

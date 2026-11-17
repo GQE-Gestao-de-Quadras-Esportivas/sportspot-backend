@@ -4,6 +4,8 @@ import { Courts } from "../entities/Courts.js";
 import { AppointmentInput } from "../validation/appointment.validation.js";
 import { conflict, forbidden, notFound, unprocessable } from "../errors/http-error.js";
 import { APPOINTMENT_RULES } from "../domain/enums.js";
+import { AuthUsers } from "../entities/AuthUsers.js";
+import { publishEvent } from "../messaging/publisher.js";
 
 export function toAppointmentDTO(a: Appointments) {
   return {
@@ -53,18 +55,26 @@ export class AppointmentService {
     return toAppointmentDTO(a);
   }
 
-  async create(courtId: string, input: AppointmentInput, customerId: string) {
+  async create(courtId: string, input: AppointmentInput, customerId: string, requestId: string) {
     const { start_time, end_time } = input;
     const now = new Date();
 
     // Regra 1: não agendar no passado (422)
     if (start_time <= now) {
-      throw unprocessable("agendamento-no-passado", "Horário no passado", "Não é possível agendar um horário que já passou.");
+      throw unprocessable(
+        "agendamento-no-passado",
+        "Horário no passado",
+        "Não é possível agendar um horário que já passou.",
+      );
     }
     // Regra 2: o fim deve ser depois do início, com duração entre 30 min e 4 h (422)
     const minutos = (end_time.getTime() - start_time.getTime()) / 60000;
     if (minutos <= 0) {
-      throw unprocessable("intervalo-invalido", "Intervalo inválido", "O horário de término deve ser depois do horário de início.");
+      throw unprocessable(
+        "intervalo-invalido",
+        "Intervalo inválido",
+        "O horário de término deve ser depois do horário de início.",
+      );
     }
     if (minutos < APPOINTMENT_RULES.minMinutes || minutos > APPOINTMENT_RULES.maxMinutes) {
       throw unprocessable(
@@ -75,7 +85,7 @@ export class AppointmentService {
     }
 
     // A verificação de conflito e a gravação acontecem na mesma transação
-    return this.dataSource.transaction(async (manager) => {
+    const created = await this.dataSource.transaction(async (manager) => {
       // Trava a linha da quadra: duas reservas simultâneas na mesma quadra entram em fila
       const court = await manager.getRepository(Courts).findOne({
         where: { id: courtId },
@@ -97,15 +107,57 @@ export class AppointmentService {
       }
 
       const price = Math.round(Number(court.price) * (minutos / 60) * 100) / 100;
-      const saved = await manager.getRepository(Appointments).save(
-        manager.getRepository(Appointments).create({ court_id: courtId, customer_id: customerId, start_time, end_time, price }),
-      );
+      const saved = await manager
+        .getRepository(Appointments)
+        .save(
+          manager
+            .getRepository(Appointments)
+            .create({ court_id: courtId, customer_id: customerId, start_time, end_time, price }),
+        );
       return toAppointmentDTO(saved);
     });
+
+    // Só depois do commit: o evento nunca anuncia uma reserva que não foi gravada
+    await this.publish("agendamento.criado", created, requestId);
+    return created;
+  }
+
+  // Monta o corpo do evento com o que os consumidores precisam (sem obrigá-los a chamar a API)
+  private async publish(routingKey: string, a: ReturnType<typeof toAppointmentDTO>, requestId: string) {
+    try {
+      const court = await this.dataSource.getRepository(Courts).findOne({
+        where: { id: a.court_id },
+        relations: { landlord: true },
+      });
+      const users = this.dataSource.getRepository(AuthUsers);
+      const landlord = court?.landlord ? await users.findOneBy({ id: court.landlord.id }) : null;
+      const customer = a.customer_id ? await users.findOneBy({ id: a.customer_id }) : null;
+
+      publishEvent(
+        routingKey,
+        {
+          appointmentId: a.id,
+          courtId: a.court_id,
+          courtName: court?.court_name,
+          sport: court?.sport,
+          landlordId: landlord?.id ?? null,
+          landlordEmail: landlord?.email ?? null,
+          customerId: a.customer_id,
+          customerEmail: customer?.email ?? null,
+          startTime: a.start_time,
+          endTime: a.end_time,
+          price: a.price,
+        },
+        requestId,
+      );
+    } catch (err: any) {
+      // A reserva já foi gravada: uma falha aqui não pode virar erro 500 para o cliente
+      console.error(`[rest] [${requestId}] falha ao montar o evento ${routingKey}: ${err.message}`);
+    }
   }
 
   // Cancelar: quem reservou ou o dono da quadra; só com 24 h de antecedência
-  async cancel(id: string, userId: string) {
+  async cancel(id: string, userId: string, requestId: string) {
     const a = await this.repo.findOne({ where: { id }, relations: { court: { landlord: true } } });
     if (!a) throw notFound(`A reserva ${id} não existe.`);
 
@@ -122,6 +174,8 @@ export class AppointmentService {
         `Reservas só podem ser canceladas com ${APPOINTMENT_RULES.cancelAdvanceHours} h de antecedência (faltam ${horasAteInicio.toFixed(1)} h).`,
       );
     }
+    const snapshot = toAppointmentDTO(a); // guarda os dados antes de apagar
     await this.repo.delete(id);
+    await this.publish("agendamento.cancelado", snapshot, requestId);
   }
 }

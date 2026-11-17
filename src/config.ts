@@ -11,6 +11,7 @@ export const config = {
   dbSsl: process.env.DB_SSL === "true", // true só para bancos hospedados (ex.: Render)
   jwtSecret: process.env.JWT_SECRET || "dev-jwt-secret-troque-em-producao",
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || "dev-refresh-secret-troque-em-producao",
+  rabbitUrl: process.env.RABBITMQ_URL || "amqp://guest:guest@localhost:5672",
   corsOrigin: process.env.CORS_ORIGIN || "http://localhost:4200",
   basePath: "/v1/api",
 };
