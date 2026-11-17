@@ -1,0 +1,528 @@
+openapi: 3.1.0
+info:
+  title: SportSpot - API de quadras esportivas e agendamentos
+  version: 1.0.0
+  description: |
+    API REST do SportSpot, acessada pelo API Gateway (único ponto de entrada).
+    O gateway recebe em `/api/...` e repassa à API REST interna sem o prefixo
+    (`/api/quadras` -> `/quadras`), reescrevendo também o cabeçalho `Location`.
+
+    **Convenção de erros** (Problem Details, RFC 9457, `application/problem+json`):
+    - `400` requisição malformada (JSON inválido, corpo que não é objeto, parâmetro de consulta inválido);
+    - `415` corpo enviado sem `Content-Type: application/json`;
+    - `422` corpo bem formado, mas com campos inválidos (lista `errors`) ou que viola uma regra de negócio (`regra`);
+    - `409` conflito com o estado atual (horário ocupado, quadra com reservas, reserva já cancelada).
+
+    **Regras de negócio**: RN01 esporte compatível com o piso (422) · RN02 horário já ocupado (409) ·
+    RN03 sem passado e até 60 dias de antecedência (422) · RN04 de 1 h a 3 h em blocos de 30 min (422) ·
+    RN05 dentro do horário de funcionamento (422) · RN06 depois das 18:00 só em quadra com iluminação (422) ·
+    RN07 cancelar só até 2 h antes e uma única vez (422/409) · RN08 não remover quadra com reservas futuras (409).
+
+    Todas as chaves de API deste documento são fictícias.
+servers:
+  - url: http://localhost:3000/api
+    description: API Gateway (porta pública)
+security:
+  - chaveApi: []
+  - jwt: []
+tags:
+  - name: Quadras
+    description: Cadastro das quadras esportivas (CRUD completo)
+  - name: Agendamentos
+    description: Reservas de horário nas quadras
+  - name: Pessoas
+    description: Atletas e proprietários (somente leitura)
+  - name: Painel
+    description: Rota agregada do gateway
+paths:
+  /quadras:
+    get:
+      tags: [Quadras]
+      summary: Lista quadras com filtro, ordenação e paginação
+      operationId: listarQuadras
+      parameters:
+        - { name: esporte, in: query, schema: { $ref: '#/components/schemas/Esporte' } }
+        - { name: piso, in: query, schema: { $ref: '#/components/schemas/Piso' } }
+        - { name: recurso, in: query, schema: { $ref: '#/components/schemas/Recurso' } }
+        - { name: cidade, in: query, schema: { type: string }, description: 'Comparação sem acento e sem diferenciar maiúsculas' }
+        - { name: uf, in: query, schema: { type: string, example: SP } }
+        - { name: proprietarioId, in: query, schema: { type: string } }
+        - { name: precoMin, in: query, schema: { type: number } }
+        - { name: precoMax, in: query, schema: { type: number } }
+        - { name: busca, in: query, schema: { type: string }, description: 'Trecho do nome' }
+        - { name: ids, in: query, schema: { type: string, example: 'q1,q2' }, description: 'Lista de ids separados por vírgula' }
+        - name: ordenar
+          in: query
+          description: 'nome, precoHora, criadaEm ou cidade; prefixo "-" para decrescente; vários separados por vírgula'
+          schema: { type: string, default: nome, example: '-precoHora,nome' }
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+      responses:
+        '200':
+          description: Página de quadras
+          headers:
+            X-Total-Count: { schema: { type: integer } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaQuadras' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '429': { $ref: '#/components/responses/LimiteExcedido' }
+        '502': { $ref: '#/components/responses/ErroDoGateway' }
+        '503': { $ref: '#/components/responses/ErroDoGateway' }
+        '504': { $ref: '#/components/responses/ErroDoGateway' }
+    post:
+      tags: [Quadras]
+      summary: Cadastra uma quadra
+      operationId: cadastrarQuadra
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuadraEntrada' }
+      responses:
+        '201':
+          description: Quadra criada; publica o evento quadra.cadastrada
+          headers:
+            Location: { schema: { type: string, example: /api/quadras/q6 } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quadra' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/Proibido' }
+        '415': { $ref: '#/components/responses/MidiaNaoSuportada' }
+        '422': { $ref: '#/components/responses/NaoProcessavel' }
+        '429': { $ref: '#/components/responses/LimiteExcedido' }
+  /quadras/{id}:
+    parameters:
+      - $ref: '#/components/parameters/id'
+    get:
+      tags: [Quadras]
+      summary: Detalha uma quadra
+      operationId: obterQuadra
+      responses:
+        '200':
+          description: Quadra
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quadra' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+    put:
+      tags: [Quadras]
+      summary: Substitui todos os dados da quadra
+      operationId: substituirQuadra
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuadraEntrada' }
+      responses:
+        '200':
+          description: Quadra atualizada; publica quadra.atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quadra' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '403': { $ref: '#/components/responses/Proibido' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '422': { $ref: '#/components/responses/NaoProcessavel' }
+    patch:
+      tags: [Quadras]
+      summary: Altera parte dos dados da quadra
+      operationId: alterarQuadra
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuadraParcial' }
+      responses:
+        '200':
+          description: Quadra atualizada; publica quadra.atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quadra' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '422': { $ref: '#/components/responses/NaoProcessavel' }
+    delete:
+      tags: [Quadras]
+      summary: Remove a quadra
+      operationId: removerQuadra
+      responses:
+        '204': { description: Removida; publica quadra.removida }
+        '403': { $ref: '#/components/responses/Proibido' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflito' }
+  /quadras/{id}/agendamentos:
+    get:
+      tags: [Agendamentos]
+      summary: Reservas de uma quadra
+      operationId: listarAgendamentosDaQuadra
+      parameters:
+        - $ref: '#/components/parameters/id'
+        - $ref: '#/components/parameters/data'
+        - $ref: '#/components/parameters/status'
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+      responses:
+        '200':
+          description: Página de reservas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaAgendamentos' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+  /agendamentos:
+    get:
+      tags: [Agendamentos]
+      summary: Lista reservas
+      operationId: listarAgendamentos
+      parameters:
+        - { name: quadraId, in: query, schema: { type: string, example: 'q1,q2' } }
+        - { name: atletaId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/data'
+        - $ref: '#/components/parameters/status'
+        - { name: ordenar, in: query, schema: { type: string, default: inicio, example: '-valorTotal' } }
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+      responses:
+        '200':
+          description: Página de reservas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaAgendamentos' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '403': { $ref: '#/components/responses/Proibido' }
+    post:
+      tags: [Agendamentos]
+      summary: Reserva uma quadra
+      description: |
+        Aplica as regras RN02 a RN06. O valor total é calculado pelo servidor
+        (preço/hora x duração). A gravação e o evento `agendamento.criado` são
+        registrados juntos (padrão Outbox) e a resposta sai sem esperar os consumidores.
+      operationId: agendar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NovoAgendamento' }
+      responses:
+        '201':
+          description: Reserva confirmada
+          headers:
+            Location: { schema: { type: string, example: /api/agendamentos/ag0007 } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Agendamento' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '403': { $ref: '#/components/responses/Proibido' }
+        '409': { $ref: '#/components/responses/Conflito' }
+        '415': { $ref: '#/components/responses/MidiaNaoSuportada' }
+        '422': { $ref: '#/components/responses/NaoProcessavel' }
+        '429': { $ref: '#/components/responses/LimiteExcedido' }
+  /agendamentos/{id}:
+    get:
+      tags: [Agendamentos]
+      summary: Detalha uma reserva
+      operationId: obterAgendamento
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses:
+        '200':
+          description: Reserva
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Agendamento' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+  /agendamentos/{id}/cancelamento:
+    post:
+      tags: [Agendamentos]
+      summary: Cancela uma reserva (RN07)
+      operationId: cancelar
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                motivo: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: Reserva cancelada; publica agendamento.cancelado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Agendamento' }
+        '403': { $ref: '#/components/responses/Proibido' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflito' }
+        '422': { $ref: '#/components/responses/NaoProcessavel' }
+  /atletas:
+    get:
+      tags: [Pessoas]
+      summary: Lista atletas (aceita ids=a1,a2)
+      operationId: listarAtletas
+      parameters:
+        - { name: ids, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/pagina'
+        - $ref: '#/components/parameters/tamanho'
+      responses:
+        '200': { description: Página de atletas }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+  /atletas/{id}:
+    get:
+      tags: [Pessoas]
+      summary: Detalha um atleta
+      operationId: obterAtleta
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: Atleta }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+  /proprietarios:
+    get:
+      tags: [Pessoas]
+      summary: Lista proprietários (aceita ids=p1,p2)
+      operationId: listarProprietarios
+      responses:
+        '200': { description: Página de proprietários }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+  /proprietarios/{id}:
+    get:
+      tags: [Pessoas]
+      summary: Detalha um proprietário
+      operationId: obterProprietario
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: Proprietário }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+  /painel/quadras/{id}:
+    get:
+      tags: [Painel]
+      summary: Rota agregada do gateway - quadra (API REST) + agenda do dia com atletas (GraphQL)
+      description: Se uma das fontes falhar, responde 200 com `parcial = true` e `avisos`. Exclusiva do cliente painel-proprietario.
+      operationId: painelDaQuadra
+      parameters:
+        - $ref: '#/components/parameters/id'
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Painel completo ou parcial
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PainelQuadra' }
+        '403': { $ref: '#/components/responses/Proibido' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '503': { $ref: '#/components/responses/ErroDoGateway' }
+components:
+  securitySchemes:
+    chaveApi:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: 'Chaves fictícias: chave-app-atleta-123 (10/min), chave-painel-proprietario-456 (60/min), chave-parceiro-789 (30/min, só catálogo)'
+    jwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Obtido em POST /api/auth/token com usuário fictício
+  parameters:
+    id: { name: id, in: path, required: true, schema: { type: string } }
+    pagina: { name: pagina, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    tamanho:
+      name: tamanho
+      in: query
+      description: Itens por página; valores acima de 50 são limitados a 50 (teto)
+      schema: { type: integer, minimum: 1, default: 10, maximum: 50 }
+    data: { name: data, in: query, schema: { type: string, format: date, example: '2026-11-20' } }
+    status: { name: status, in: query, schema: { $ref: '#/components/schemas/StatusAgendamento' } }
+  schemas:
+    Esporte: { type: string, enum: [futebol, futsal, basquete, volei, tenis, beach_tennis] }
+    Piso: { type: string, enum: [grama_natural, grama_sintetica, parquet, cimento, areia] }
+    Recurso: { type: string, enum: [cobertura, iluminacao, vestiario] }
+    StatusAgendamento: { type: string, enum: [CONFIRMADO, CANCELADO] }
+    Endereco:
+      type: object
+      required: [cep, logradouro, numero, bairro, cidade, uf]
+      properties:
+        cep: { type: string, pattern: '^\d{5}-?\d{3}$', example: 14800-000 }
+        logradouro: { type: string, maxLength: 120 }
+        numero: { type: string, maxLength: 6 }
+        bairro: { type: string, maxLength: 80 }
+        cidade: { type: string, maxLength: 80 }
+        uf: { type: string, example: SP }
+    QuadraEntrada:
+      type: object
+      additionalProperties: false
+      required: [nome, esporte, piso, precoHora, endereco, proprietarioId]
+      properties:
+        nome: { type: string, minLength: 3, maxLength: 80 }
+        esporte: { $ref: '#/components/schemas/Esporte' }
+        piso: { $ref: '#/components/schemas/Piso' }
+        precoHora: { type: number, minimum: 1, maximum: 2000 }
+        endereco: { $ref: '#/components/schemas/Endereco' }
+        descricao: { type: string, maxLength: 500 }
+        recursos: { type: array, uniqueItems: true, items: { $ref: '#/components/schemas/Recurso' } }
+        horarioAbertura: { type: string, pattern: '^\d{2}:\d{2}$', default: '07:00' }
+        horarioFechamento: { type: string, pattern: '^\d{2}:\d{2}$', default: '23:00' }
+        proprietarioId: { type: string, example: p1 }
+    QuadraParcial:
+      type: object
+      additionalProperties: false
+      description: Qualquer subconjunto de QuadraEntrada, exceto proprietarioId
+      properties:
+        nome: { type: string }
+        esporte: { $ref: '#/components/schemas/Esporte' }
+        piso: { $ref: '#/components/schemas/Piso' }
+        precoHora: { type: number }
+        endereco: { $ref: '#/components/schemas/Endereco' }
+        descricao: { type: string }
+        recursos: { type: array, items: { $ref: '#/components/schemas/Recurso' } }
+        horarioAbertura: { type: string }
+        horarioFechamento: { type: string }
+    Quadra:
+      allOf:
+        - $ref: '#/components/schemas/QuadraEntrada'
+        - type: object
+          properties:
+            id: { type: string, example: q1 }
+            criadaEm: { type: string, format: date-time }
+            atualizadaEm: { type: string, format: date-time }
+    NovoAgendamento:
+      type: object
+      additionalProperties: false
+      required: [quadraId, atletaId, inicio, duracaoMinutos]
+      properties:
+        quadraId: { type: string, example: q1 }
+        atletaId: { type: string, example: a1 }
+        inicio: { type: string, format: date-time, example: '2026-11-20T19:00:00-03:00' }
+        duracaoMinutos: { type: integer, example: 90 }
+    Agendamento:
+      type: object
+      properties:
+        id: { type: string, example: ag0007 }
+        quadraId: { type: string }
+        atletaId: { type: string }
+        inicio: { type: string, format: date-time }
+        fim: { type: string, format: date-time }
+        duracaoMinutos: { type: integer }
+        valorTotal: { type: number, example: 270 }
+        status: { $ref: '#/components/schemas/StatusAgendamento' }
+        criadoEm: { type: string, format: date-time }
+        canceladoEm: { type: [string, 'null'], format: date-time }
+        motivoCancelamento: { type: [string, 'null'] }
+    Paginacao:
+      type: object
+      properties:
+        pagina: { type: integer }
+        tamanho: { type: integer }
+        tamanhoMaximo: { type: integer, example: 50 }
+        total: { type: integer }
+        totalPaginas: { type: integer }
+    Links:
+      type: object
+      properties:
+        proxima: { type: [string, 'null'] }
+        anterior: { type: [string, 'null'] }
+    PaginaQuadras:
+      type: object
+      properties:
+        dados: { type: array, items: { $ref: '#/components/schemas/Quadra' } }
+        paginacao: { $ref: '#/components/schemas/Paginacao' }
+        links: { $ref: '#/components/schemas/Links' }
+    PaginaAgendamentos:
+      type: object
+      properties:
+        dados: { type: array, items: { $ref: '#/components/schemas/Agendamento' } }
+        paginacao: { $ref: '#/components/schemas/Paginacao' }
+        links: { $ref: '#/components/schemas/Links' }
+    PainelQuadra:
+      type: object
+      properties:
+        quadra: { oneOf: [{ $ref: '#/components/schemas/Quadra' }, { type: 'null' }] }
+        agendaDoDia:
+          type: [object, 'null']
+          properties:
+            data: { type: string, format: date }
+            reservas: { type: array, items: { type: object } }
+            totalReservas: { type: integer }
+            receitaPrevista: { type: number }
+            minutosReservados: { type: integer }
+            ocupacaoPercentual: { type: [number, 'null'] }
+        parcial: { type: boolean }
+        fontes: { type: object, additionalProperties: { type: string, enum: [ok, erro, indisponivel] } }
+        avisos: { type: array, items: { type: string } }
+    Problema:
+      type: object
+      description: Problem Details (RFC 9457)
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri, example: 'https://sportspot.example/problemas/horario-ocupado' }
+        title: { type: string, example: Horário já ocupado }
+        status: { type: integer, example: 409 }
+        detail: { type: string }
+        instance: { type: string }
+        requestId: { type: string }
+        regra: { type: string, example: RN02 }
+        conflitoCom: { type: string, description: 'Reserva que ocupa o horário (RN02)' }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              campo: { type: string }
+              mensagem: { type: string }
+  responses:
+    RequisicaoInvalida:
+      description: Requisição malformada
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+          example: { type: 'https://sportspot.example/problemas/json-malformado', title: JSON malformado, status: 400, detail: O corpo da requisição não é um JSON válido., instance: /quadras }
+    NaoAutenticado:
+      description: Sem chave de API, chave inválida ou token expirado
+      headers:
+        WWW-Authenticate: { schema: { type: string } }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    Proibido:
+      description: O cliente (plano) ou o usuário não pode fazer esta operação
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    NaoEncontrado:
+      description: Recurso inexistente
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    Conflito:
+      description: Conflito com o estado atual (RN02, RN07, RN08)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+          example: { type: 'https://sportspot.example/problemas/horario-ocupado', title: Horário já ocupado, status: 409, regra: RN02, conflitoCom: ag0001 }
+    MidiaNaoSuportada:
+      description: Corpo sem Content-Type application/json
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    NaoProcessavel:
+      description: Campos inválidos (errors) ou regra de negócio violada (regra)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+          example: { type: 'https://sportspot.example/problemas/sem-iluminacao', title: Quadra sem iluminação noturna, status: 422, regra: RN06 }
+    LimiteExcedido:
+      description: Limite do plano do cliente excedido
+      headers:
+        Retry-After: { schema: { type: integer } }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    ErroDoGateway:
+      description: 502 serviço fora do ar, 503 disjuntor aberto, 504 tempo esgotado
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }

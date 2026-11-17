@@ -1,0 +1,36 @@
+{
+  "name": "sportspot-tutoriais",
+  "version": "1.0.0",
+  "description": "SportSpot: API REST, mensageria (RabbitMQ), GraphQL e API Gateway aplicados ao agendamento de quadras esportivas",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "rest": "node rest/server.js",
+    "graphql": "node graphql/server.js",
+    "gateway": "node gateway/server.js",
+    "consumidores": "node mensageria/todos.js",
+    "consumidor:notificacoes": "node mensageria/consumidor-notificacoes.js",
+    "consumidor:faturamento": "node mensageria/consumidor-faturamento.js",
+    "consumidor:auditoria": "node mensageria/consumidor-auditoria.js",
+    "cena:cliente": "node testes/cliente.js",
+    "cena:agendamento": "node testes/agendamento.js",
+    "cena:falha": "node testes/falha-dlq.js",
+    "cena:duplicidade": "node testes/duplicidade.js",
+    "cena:graphql": "node testes/graphql.js",
+    "cena:gateway": "node testes/teste-gateway.js",
+    "cena:painel": "node testes/painel.js",
+    "cena:rastreio": "node testes/rastreio.js",
+    "test": "node --test testes/rotas.test.js"
+  },
+  "dependencies": {
+    "@apollo/server": "^5.5.2",
+    "amqplib": "^0.10.9",
+    "dataloader": "^2.2.3",
+    "express": "^5.2.1",
+    "graphql": "^16.11.0",
+    "jsonwebtoken": "^9.0.3"
+  }
+}
