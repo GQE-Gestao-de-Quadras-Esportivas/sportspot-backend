@@ -39,6 +39,14 @@ export class Appointments {
   @JoinColumn({ name: "customer_id" })
   customer!: UserDetails | null;
 
+  // Cancelamento lógico: reservas nunca são apagadas do banco
+  // (restrição do caderno EARS: proibido hard delete de reserva cancelada/finalizada)
+  @Column({ type: "varchar", length: 16, default: "confirmada" })
+  status!: "confirmada" | "cancelada";
+
+  @Column({ name: "cancelled_at", type: "timestamp", nullable: true })
+  cancelled_at!: Date | null;
+
   @CreateDateColumn({ name: "created_at", type: "timestamp" })
   created_At!: Date;
 }

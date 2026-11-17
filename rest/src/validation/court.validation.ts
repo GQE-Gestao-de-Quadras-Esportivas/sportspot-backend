@@ -121,6 +121,7 @@ export interface CourtListQuery {
   minPrice?: number;
   maxPrice?: number;
   owner?: "me";
+  ids?: string[];
   sort: keyof typeof SORT_FIELDS;
   order: "ASC" | "DESC";
   page: number;
@@ -147,6 +148,10 @@ export function parseCourtListQuery(q: Record<string, unknown>): CourtListQuery 
   if (!(sort in SORT_FIELDS)) errors.push({ field: "sort", message: `use: ${Object.keys(SORT_FIELDS).join(", ")}` });
   const order = (str("order") ?? "desc").toLowerCase();
   if (order !== "asc" && order !== "desc") errors.push({ field: "order", message: "use asc ou desc" });
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const ids = str("ids")?.split(",").map((x) => x.trim()).filter(Boolean);
+  if (ids && (ids.length > PAGE_MAX || ids.some((x) => !UUID.test(x))))
+    errors.push({ field: "ids", message: `lista de até ${PAGE_MAX} UUIDs separados por vírgula` });
   const owner = str("owner");
   if (owner !== undefined && owner !== "me") errors.push({ field: "owner", message: "o único valor aceito é me" });
 
@@ -158,6 +163,7 @@ export function parseCourtListQuery(q: Record<string, unknown>): CourtListQuery 
     minPrice: num("minPrice"),
     maxPrice: num("maxPrice"),
     owner: owner as "me" | undefined,
+    ids,
     sort,
     order: order.toUpperCase() as "ASC" | "DESC",
     page: int("page", 1),

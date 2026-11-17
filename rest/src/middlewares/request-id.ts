@@ -11,7 +11,7 @@ export const requestId: RequestHandler = (req, res, next) => {
   const inicio = Date.now();
   res.on("finish", () => {
     console.log(
-      `[rest] [${id}] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - inicio} ms)`,
+      `[rest] [${id}] ${req.get("X-Cliente-Id") ?? "direto"} ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - inicio} ms)`,
     );
   });
   next();

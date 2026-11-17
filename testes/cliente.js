@@ -1,17 +1,18 @@
 // Evidência da Parte 1: cria, lê, altera e remove uma quadra, cria uma reserva
 // e provoca de propósito os erros 400, 401, 404, 409 e 422.
 //
-// Uso:  node testes/cliente.js
-//       BASE_URL=http://127.0.0.1:3000/v1/api node testes/cliente.js
-//
-// Depois da Parte 4, troque BASE_URL pelo endereço do gateway.
+// Uso:  node testes/cliente.js             (direto na API, só na própria máquina)
+//       node testes/cliente.js --gateway   (pelo gateway, como um cliente de verdade)
 
-const BASE_URL = process.env.BASE_URL || "http://127.0.0.1:3000/v1/api";
+// node testes/cliente.js --gateway  → passa pelo gateway (porta 8080) com a chave do painel-locador
+const VIA_GATEWAY = process.argv.includes("--gateway");
+const BASE_URL = process.env.BASE_URL || (VIA_GATEWAY ? "http://127.0.0.1:8080/api/rest" : "http://127.0.0.1:3000/v1/api");
 const REQUEST_ID = `cliente-${Date.now()}`;
 let token = "";
 
 async function chamar(titulo, metodo, caminho, corpo, { semToken = false } = {}) {
   const headers = { "X-Request-Id": REQUEST_ID };
+  if (VIA_GATEWAY) headers["X-API-Key"] = "chave-painel-locador-456";
   if (corpo !== undefined) headers["Content-Type"] = "application/json";
   if (token && !semToken) headers["Authorization"] = `Bearer ${token}`;
 
@@ -105,7 +106,7 @@ await chamar("REGRA 422: término antes do início", "POST", `/courts/${id}/appo
   start_time: daquiA(4, 21),
   end_time: daquiA(4, 19),
 });
-await chamar("REGRA 409: remover quadra com reserva futura", "DELETE", `/courts/${id}`);
+await chamar("REGRA 409: remover quadra com histórico de reservas", "DELETE", `/courts/${id}`);
 
 // Reserva para amanhã cedo: menos de 24 h → não pode cancelar
 const amanha = await chamar("Reservar para daqui a poucas horas", "POST", `/courts/${id}/appointments`, {
@@ -115,6 +116,8 @@ const amanha = await chamar("Reservar para daqui a poucas horas", "POST", `/cour
 await chamar("REGRA 422: cancelar com menos de 24 h", "DELETE", `/appointments/${amanha.dados.id}`);
 
 await chamar("Cancelar a reserva de daqui a 3 dias (204)", "DELETE", `/appointments/${reserva.dados.id}`);
+await chamar("A reserva cancelada continua no histórico (sem hard delete)", "GET", `/appointments/${reserva.dados.id}`);
+await chamar("REGRA 409: cancelar de novo", "DELETE", `/appointments/${reserva.dados.id}`);
 
 // ---------- remoção ----------
 const temporaria = await chamar("Criar uma segunda quadra, sem reservas", "POST", "/courts", {

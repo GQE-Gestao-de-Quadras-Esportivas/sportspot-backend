@@ -1,4 +1,4 @@
-import { DataSource, FindOptionsWhere, ILike, MoreThan, Between, MoreThanOrEqual, LessThanOrEqual } from "typeorm";
+import { DataSource, FindOptionsWhere, ILike, In, Between, MoreThanOrEqual, LessThanOrEqual } from "typeorm";
 import { Courts } from "../entities/Courts.js";
 import { Appointments } from "../entities/Appointments.js";
 import { CourtInput, CourtListQuery, SORT_FIELDS } from "../validation/court.validation.js";
@@ -44,6 +44,7 @@ export class CourtService {
     else if (q.minPrice !== undefined) where.price = MoreThanOrEqual(q.minPrice);
     else if (q.maxPrice !== undefined) where.price = LessThanOrEqual(q.maxPrice);
     if (q.owner === "me") where.landlord = { id: userId };
+    if (q.ids) where.id = In(q.ids); // busca em lote (usada pelo DataLoader do GraphQL)
 
     const [rows, total] = await this.repo.findAndCount({
       where,
@@ -90,17 +91,17 @@ export class CourtService {
     return this.get(id);
   }
 
-  // Regra de negócio: não remove quadra com reservas futuras (409)
+  // Regra de negócio: não remove quadra que tenha QUALQUER reserva no histórico (409).
+  // Apagar a quadra apagaria em cascata as reservas, e o caderno de restrições proíbe
+  // hard delete de reservas (retenção do histórico financeiro).
   async remove(id: string, userId: string) {
     await this.findOwned(id, userId);
-    const futuras = await this.dataSource.getRepository(Appointments).count({
-      where: { court_id: id, start_time: MoreThan(new Date()) },
-    });
-    if (futuras > 0) {
+    const historico = await this.dataSource.getRepository(Appointments).count({ where: { court_id: id } });
+    if (historico > 0) {
       throw conflict(
-        "quadra-com-reservas",
-        "Quadra com reservas futuras",
-        `A quadra tem ${futuras} reserva(s) futura(s). Cancele-as antes de removê-la.`,
+        "quadra-com-historico",
+        "Quadra com histórico de reservas",
+        `A quadra tem ${historico} reserva(s) no histórico e não pode ser removida (retenção do histórico financeiro).`,
       );
     }
     await this.repo.delete(id);

@@ -3,7 +3,7 @@
 import amqp from "amqplib";
 import { randomUUID } from "node:crypto";
 
-const RABBITMQ_URL = process.env.RABBITMQ_URL || "amqp://guest:guest@localhost:5672";
+const RABBITMQ_URL = process.env.RABBITMQ_URL || "amqp://guest:guest@127.0.0.1:5672";
 const EXCHANGE = "sportspot.eventos";
 
 export const esperar = (ms) => new Promise((r) => setTimeout(r, ms));

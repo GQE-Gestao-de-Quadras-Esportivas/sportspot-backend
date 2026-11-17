@@ -15,6 +15,8 @@ export function toAppointmentDTO(a: Appointments) {
     start_time: a.start_time,
     end_time: a.end_time,
     price: a.price === null || a.price === undefined ? null : Number(a.price),
+    status: a.status,
+    cancelled_at: a.cancelled_at,
     created_at: a.created_At,
   };
 }
@@ -96,7 +98,7 @@ export class AppointmentService {
       // Regra 3: horário já ocupado (409). Dois intervalos se sobrepõem quando
       // um começa antes do outro terminar E termina depois do outro começar.
       const conflito = await manager.getRepository(Appointments).findOne({
-        where: { court_id: courtId, start_time: LessThan(end_time), end_time: MoreThan(start_time) },
+        where: { court_id: courtId, status: "confirmada", start_time: LessThan(end_time), end_time: MoreThan(start_time) },
       });
       if (conflito) {
         throw conflict(
@@ -156,7 +158,9 @@ export class AppointmentService {
     }
   }
 
-  // Cancelar: quem reservou ou o dono da quadra; só com 24 h de antecedência
+  // Cancelar: quem reservou ou o dono da quadra; só com 24 h de antecedência.
+  // DELETE /appointments/:id tira a reserva de uso, mas não apaga o registro
+  // (a RFC 9110 permite que o DELETE arquive em vez de excluir).
   async cancel(id: string, userId: string, requestId: string) {
     const a = await this.repo.findOne({ where: { id }, relations: { court: { landlord: true } } });
     if (!a) throw notFound(`A reserva ${id} não existe.`);
@@ -164,6 +168,9 @@ export class AppointmentService {
     const isCustomer = a.customer_id === userId;
     const isLandlord = a.court?.landlord?.id === userId;
     if (!isCustomer && !isLandlord) throw forbidden("Só quem reservou ou o dono da quadra pode cancelar.");
+    if (a.status === "cancelada") {
+      throw conflict("reserva-ja-cancelada", "Reserva já cancelada", `A reserva ${id} já foi cancelada.`);
+    }
 
     // Regra 4: cancelamento com no mínimo 24 h de antecedência (422)
     const horasAteInicio = (a.start_time.getTime() - Date.now()) / 3_600_000;
@@ -174,8 +181,10 @@ export class AppointmentService {
         `Reservas só podem ser canceladas com ${APPOINTMENT_RULES.cancelAdvanceHours} h de antecedência (faltam ${horasAteInicio.toFixed(1)} h).`,
       );
     }
-    const snapshot = toAppointmentDTO(a); // guarda os dados antes de apagar
-    await this.repo.delete(id);
-    await this.publish("agendamento.cancelado", snapshot, requestId);
+    // Cancelamento lógico: a linha continua no banco, com status e data do cancelamento
+    a.status = "cancelada";
+    a.cancelled_at = new Date();
+    await this.repo.save(a);
+    await this.publish("agendamento.cancelado", toAppointmentDTO(a), requestId);
   }
 }

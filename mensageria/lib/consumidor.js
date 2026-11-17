@@ -16,7 +16,7 @@ import { Idempotencia } from "./idempotencia.js";
 export const EXCHANGE = "sportspot.eventos";
 export const DLX = "sportspot.dlx";
 
-const RABBITMQ_URL = process.env.RABBITMQ_URL || "amqp://guest:guest@localhost:5672";
+const RABBITMQ_URL = process.env.RABBITMQ_URL || "amqp://guest:guest@127.0.0.1:5672";
 const MAX_TENTATIVAS = Number(process.env.MAX_TENTATIVAS || 3);
 const RETRY_DELAY_MS = Number(process.env.RETRY_DELAY_MS || 2000);
 const PREFETCH = Number(process.env.PREFETCH || 10);
@@ -28,11 +28,44 @@ const PREFETCH = Number(process.env.PREFETCH || 10);
  * @param {(evento: object, ctx: {log: Function, tentativa: number}) => Promise<void>} opcoes.processar
  *        efeito do consumidor; lançar um erro aciona a nova tentativa
  */
-export async function iniciarConsumidor({ nome, ligacoes, processar }) {
+export async function iniciarConsumidor(opcoes) {
+  let atual = null; // { conexao, canal } da conexão ativa
+  let encerrando = false;
+  const processados = new Idempotencia(opcoes.nome);
+
+  // Conecta e, se não der (RabbitMQ ainda subindo ou fora do ar), tenta de novo a cada 3 s.
+  // Se a conexão cair depois, reconecta do mesmo jeito.
+  const conectar = async () => {
+    try {
+      atual = await configurar(opcoes, processados);
+      atual.conexao.on("close", () => {
+        if (encerrando) return;
+        console.error(`[${opcoes.nome}] conexão com o RabbitMQ perdida; reconectando em 3 s...`);
+        setTimeout(conectar, 3000);
+      });
+      atual.conexao.on("error", () => {}); // o "close" que vem em seguida trata
+    } catch (erro) {
+      console.error(`[${opcoes.nome}] RabbitMQ indisponível (${erro.code ?? erro.message}); nova tentativa em 3 s...`);
+      setTimeout(conectar, 3000);
+    }
+  };
+  await conectar();
+
+  const encerrar = async () => {
+    encerrando = true;
+    console.log(`[${opcoes.nome}] encerrando...`);
+    await atual?.canal.close().catch(() => {});
+    await atual?.conexao.close().catch(() => {});
+    process.exit(0);
+  };
+  process.on("SIGINT", encerrar);
+  process.on("SIGTERM", encerrar);
+}
+
+async function configurar({ nome, ligacoes, processar }, processados) {
   const fila = nome;
   const filaRetry = `${nome}.retry`;
   const filaDlq = `${nome}.dlq`;
-  const processados = new Idempotencia(nome);
 
   const conexao = await amqp.connect(RABBITMQ_URL);
   const canal = await conexao.createChannel();
@@ -119,16 +152,5 @@ export async function iniciarConsumidor({ nome, ligacoes, processar }) {
     { noAck: false }, // confirmação manual
   );
 
-  const encerrar = async () => {
-    console.log(`[${nome}] encerrando...`);
-    await canal.close().catch(() => {});
-    await conexao.close().catch(() => {});
-    process.exit(0);
-  };
-  process.on("SIGINT", encerrar);
-  process.on("SIGTERM", encerrar);
-  conexao.on("close", () => {
-    console.error(`[${nome}] conexão com o RabbitMQ encerrada. Reinicie o consumidor.`);
-    process.exit(1);
-  });
+  return { conexao, canal };
 }

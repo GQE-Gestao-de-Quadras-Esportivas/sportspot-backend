@@ -36,6 +36,14 @@ class App {
     this.app.get("/health", (_req, res) => {
       res.json({ status: "ok" });
     });
+    // Rota lenta, só para demonstrar o timeout (504) do gateway. Não existe em produção.
+    if (process.env.NODE_ENV !== "production") {
+      this.app.get(`${config.basePath}/diagnostico/lento`, async (req, res) => {
+        const ms = Math.min(Number(req.query.ms) || 5000, 30000);
+        await new Promise((r) => setTimeout(r, ms));
+        res.json({ esperou: ms });
+      });
+    }
     this.app.use(config.basePath, routes);
   }
 
