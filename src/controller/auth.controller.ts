@@ -1,23 +1,23 @@
 import { Request, Response } from "express";
 import { AuthService } from "../services/auth.service.js";
+import { badRequest, conflict, FieldError, unauthorized, unprocessable } from "../errors/http-error.js";
+
+const required = (body: any, fields: string[]): FieldError[] =>
+  fields.filter((f) => !body?.[f]).map((field) => ({ field, message: "obrigatório" }));
 
 export class AuthController {
   constructor(private authService: AuthService) {}
 
-  login = async (req: Request, res: Response): Promise<Response> => {
-    const { email, password } = req.body;
-
-    if (!email || !password)
-      return res
-        .status(400)
-        .json({ message: "Email ou senha não informados!" });
+  // POST /auth/login → 200
+  login = async (req: Request, res: Response) => {
+    const missing = required(req.body, ["email", "password"]);
+    if (missing.length) throw badRequest("E-mail ou senha não informados.", missing);
 
     try {
-      const { accessToken, refreshToken, user } =
-        await this.authService.loginUser({
-          email,
-          password,
-        });
+      const { accessToken, refreshToken, user } = await this.authService.loginUser({
+        email: req.body.email,
+        password: req.body.password,
+      });
 
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
@@ -26,110 +26,54 @@ export class AuthController {
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
-      return res.status(201).json({
-        message: "Usuário autenticado com sucesso!",
-        accessToken,
-        user,
-      });
+      return res.status(200).json({ message: "Usuário autenticado com sucesso!", accessToken, user });
     } catch (error: any) {
-      if (error.message === "USER_DONT_EXISTS") {
-        return res
-          .status(400)
-          .json({ message: "Não existe usuário cadastrado com este email." });
+      // Mesma mensagem para e-mail inexistente e senha errada: não revela quais e-mails existem
+      if (error.message === "USER_DONT_EXISTS" || error.message === "WRONG_PASSWORD") {
+        throw unauthorized("E-mail ou senha incorretos.");
       }
-      if (error.message === "WRONG_PASSWORD") {
-        return res
-          .status(400)
-          .json({ message: "O email ou a senha estão errados." });
-      }
-      if (error.message === "DATA_CONFLICT") {
-        return res
-          .status(400)
-          .json({ message: "Seus dados estão corrompidos em nosso banco de dados." });
-      }
-
-      console.error(error);
-      return res
-        .status(500)
-        .json({ message: "Erro interno ao processar o login." });
+      throw error;
     }
   };
 
-  register = async (req: Request, res: Response): Promise<Response> => {
-    const {
-      name,
-      document,
-      date_of_birth,
-      phone_number,
-      email,
-      password,
-      confirm_password,
-    } = req.body;
+  // POST /auth/register → 201
+  register = async (req: Request, res: Response) => {
+    const missing = required(req.body, [
+      "name", "document", "date_of_birth", "phone_number", "email", "password", "confirm_password",
+    ]);
+    if (missing.length) throw badRequest("Há campos obrigatórios ausentes.", missing);
 
-    if (
-      !name ||
-      !email ||
-      !password ||
-      !confirm_password ||
-      !phone_number ||
-      !date_of_birth
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Todos os campos são obrigatórios." });
-    }
-
+    const { name, document, date_of_birth, phone_number, email, password, confirm_password } = req.body;
     if (password !== confirm_password) {
-      return res.status(400).json({ message: "As senhas não coincidem." });
+      throw unprocessable("senhas-diferentes", "Senhas diferentes", "A senha e a confirmação não coincidem.");
+    }
+    if (isNaN(Date.parse(date_of_birth))) {
+      throw unprocessable("data-invalida", "Data inválida", "date_of_birth deve estar no formato AAAA-MM-DD.");
     }
 
     try {
       const newUser = await this.authService.registerUser({
-        name,
-        document,
-        date_of_birth,
-        phone_number,
-        email,
-        password_plain: password,
+        name, document, date_of_birth, phone_number, email, password_plain: password,
       });
-
-      return res.status(201).json({
-        message: "Usuário cadastrado com sucesso!",
-        user: newUser,
-      });
+      return res.status(201).json({ message: "Usuário cadastrado com sucesso!", user: newUser });
     } catch (error: any) {
       if (error.message === "EMAIL_ALREADY_EXISTS") {
-        return res.status(400).json({ message: "Este e-mail já está em uso." });
+        throw conflict("email-em-uso", "E-mail já cadastrado", "Este e-mail já está em uso.");
       }
-
-      console.error(error);
-      return res
-        .status(500)
-        .json({ message: "Erro interno ao processar o cadastro." });
+      if (error.code === "23505") {
+        throw conflict("dados-duplicados", "Dados já cadastrados", "Documento ou telefone já pertencem a outro usuário.");
+      }
+      throw error;
     }
   };
 
-  refresh = async (req: Request, res: Response): Promise<Response> => {
+  // POST /auth/refresh → 200
+  refresh = async (req: Request, res: Response) => {
     try {
-      const refreshToken = req.cookies.refreshToken;
-
-      const { accessToken } =
-        await this.authService.refreshSession(refreshToken);
-
+      const { accessToken } = await this.authService.refreshSession(req.cookies?.refreshToken);
       return res.status(200).json({ accessToken });
-    } catch (error: any) {
-      if (
-        error.message === "REFRESH_TOKEN_NOT_PROVIDED" ||
-        error.message === "INVALID_REFRESH_TOKEN"
-      ) {
-        return res
-          .status(401)
-          .json({ message: "Sessão expirada. Faça login novamente." });
-      }
-
-      return res
-        .status(500)
-        .json({ message: "Erro interno ao atualizar sessão." });
+    } catch {
+      throw unauthorized("Sessão expirada. Faça login novamente.");
     }
   };
 }

@@ -2,18 +2,19 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  ForeignKey,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { Courts } from "./Courts.js";
+import { UserDetails } from "./UserDetails.js";
 
 @Entity("appointments")
 export class Appointments {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
+  // Preço total da reserva = preço/hora da quadra × duração (calculado pela API)
   @Column("decimal", { precision: 10, scale: 2, nullable: true })
   price!: number;
 
@@ -29,6 +30,14 @@ export class Appointments {
   @ManyToOne(() => Courts, (court) => court.appointments, { onDelete: "CASCADE" })
   @JoinColumn({ name: "court_id" })
   court!: Courts;
+
+  // Quem fez a reserva (novo; nullable para não quebrar registros antigos)
+  @Column({ name: "customer_id", type: "uuid", nullable: true })
+  customer_id!: string | null;
+
+  @ManyToOne(() => UserDetails, { onDelete: "SET NULL", nullable: true })
+  @JoinColumn({ name: "customer_id" })
+  customer!: UserDetails | null;
 
   @CreateDateColumn({ name: "created_at", type: "timestamp" })
   created_At!: Date;

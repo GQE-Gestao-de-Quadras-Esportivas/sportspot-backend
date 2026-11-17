@@ -3,6 +3,7 @@ import { AuthUsers } from "../entities/AuthUsers.js";
 import bcrypt from "bcrypt";
 import { UserDetails } from "../entities/UserDetails.js";
 import jwt from "jsonwebtoken";
+import { config } from "../config.js";
 
 export interface LoginUserDTO {
   email: string;
@@ -53,9 +54,9 @@ export class AuthService {
       })
       if (!userDetails) throw new Error("DATA_CONFLICT");
 
-      const secret = process.env.JWT_SECRET || "secret-token";
+      const secret = config.jwtSecret;
       const refreshSecret =
-        process.env.JWT_REFRESH_SECRET || "refresh-secret-token";
+        config.jwtRefreshSecret;
 
       const accessToken = jwt.sign({ name: userDetails.name, role: userData.user_type }, secret, {
         subject: String(userData.id),
@@ -134,13 +135,13 @@ export class AuthService {
 
     try {
       const refreshSecret =
-        process.env.JWT_REFRESH_SECRET || "refresh-secret-token";
+        config.jwtRefreshSecret;
 
       const decoded = jwt.verify(refreshToken, refreshSecret);
       const userId = (decoded as any).sub;
       const userRole = (decoded as any).role;
 
-      const secret = process.env.JWT_SECRET || "secret-token";
+      const secret = config.jwtSecret;
       const accessToken = jwt.sign({ role: userRole }, secret, {
         subject: String(userId),
         expiresIn: "15m",

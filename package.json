@@ -1,7 +1,7 @@
 {
   "name": "sportspot-backend",
   "version": "0.0.1",
-  "description": "Awesome project developed with TypeORM.",
+  "description": "API REST do SportSpot (gestão de quadras esportivas)",
   "type": "module",
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
@@ -27,8 +27,12 @@
     "typeorm": "1.0.0"
   },
   "scripts": {
-    "start": "ts-node src/index.ts",
-    "typeorm": "typeorm-ts-node-commonjs",
-    "dev": "tsx watch src/server.ts"
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "cliente": "node testes/cliente.js"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

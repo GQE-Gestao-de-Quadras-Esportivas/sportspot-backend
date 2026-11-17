@@ -1,18 +1,27 @@
-import { Router, Request, Response } from "express";
+import { Router } from "express";
 import { ensureAuthenticated } from "../middlewares/auth.middleware.js";
 import { CourtController } from "../controller/court.controller.js";
+import { AppointmentController } from "../controller/appointment.controller.js";
 import { CourtService } from "../services/court.service.js";
+import { AppointmentService } from "../services/appointment.service.js";
 import { AppDataSource } from "../data-source.js";
 
 const courtsRoutes = Router();
+const courts = new CourtController(new CourtService(AppDataSource));
+const appointments = new AppointmentController(new AppointmentService(AppDataSource));
 
-const courtService = new CourtService(AppDataSource);
-const courtController = new CourtController(courtService);
+courtsRoutes.use(ensureAuthenticated);
 
-courtsRoutes.get("/", ensureAuthenticated, (req, res) => courtController.list(req, res));
-courtsRoutes.post("/register", ensureAuthenticated, (req, res) => courtController.register(req, res));
+// Recurso: quadras (CRUD completo)
+courtsRoutes.get("/", courts.list);
+courtsRoutes.post("/", courts.create);
+courtsRoutes.get("/:id", courts.get);
+courtsRoutes.put("/:id", courts.replace);
+courtsRoutes.patch("/:id", courts.patch);
+courtsRoutes.delete("/:id", courts.remove);
 
-courtsRoutes.get("/appointments", ensureAuthenticated, (req, res) => courtController.listAppointments(req, res));
-courtsRoutes.post("/:courtId/new/appointment", ensureAuthenticated, (req, res) => courtController.createAppointment(req, res));
+// Sub-recurso: reservas de uma quadra
+courtsRoutes.get("/:id/appointments", appointments.listByCourt);
+courtsRoutes.post("/:id/appointments", appointments.create);
 
 export { courtsRoutes };

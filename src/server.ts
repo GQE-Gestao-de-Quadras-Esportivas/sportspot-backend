@@ -1,22 +1,19 @@
 import app from "./app.js";
 import { AppDataSource } from "./data-source.js";
-
-
-const PORT = process.env.PORT || 3000;
+import { config } from "./config.js";
 
 async function startServer() {
   try {
     await AppDataSource.initialize();
     console.log("📦 Banco de dados conectado com sucesso!");
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Servidor rodando em: http://localhost:${PORT}`);
-      console.log(`🔒 Rota de teste: http://localhost:${PORT}/api/auth`);
-      console.log(`&& Rota de quadras: http://localhost:${PORT}/api/courts`);
+    // Escuta só em 127.0.0.1: de fora, a API só é alcançada através do gateway
+    app.listen(config.port, config.host, () => {
+      console.log(`🚀 API REST em http://${config.host}:${config.port}${config.basePath}`);
     });
   } catch (error) {
     console.error("❌ Falha ao iniciar o servidor:", error);
-    process.exit(1); // Fecha a aplicação com código de erro se o banco falhar
+    process.exit(1);
   }
 }
 

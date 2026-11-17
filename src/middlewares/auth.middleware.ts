@@ -1,32 +1,27 @@
 import { Request, Response, NextFunction } from "express";
-import jwt from 'jsonwebtoken';
-const { verify } = jwt;
+import jwt from "jsonwebtoken";
+import { config } from "../config.js";
+import { unauthorized } from "../errors/http-error.js";
 
 interface ITokenPayload {
-    iat: number;
-    exp: number;
-    sub: string;
+  sub: string;
+  role?: string;
 }
 
-export function ensureAuthenticated(req: Request, res: Response, next: NextFunction): Response | void {
-    const authHeader = req.headers.authorization;
+// O gateway identifica o APLICATIVO (chave de API).
+// Este middleware identifica o USUÁRIO (JWT), para a API conferir quem é dono de cada dado.
+export function ensureAuthenticated(req: Request, _res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) throw unauthorized("Token JWT não fornecido no cabeçalho Authorization.");
 
-    if (!authHeader) return res.status(401).json({ message: "Token JWT não fornecido." });
+  const [scheme, token] = authHeader.split(" ");
+  if (scheme !== "Bearer" || !token) throw unauthorized("Use o formato: Authorization: Bearer <token>.");
 
-    const [, token] = authHeader.split(' ');
-
-    try {
-        const secret = process.env.JWT_SECRET || 'sportspot-jwt-fallback';
-        const decoded = verify(token, secret);
-
-        const { sub } = decoded as ITokenPayload;
-
-        req.user = {
-            id: sub,
-        };
-
-        return next();
-    } catch (err) {
-        return res.status(401).json({ message: "Token JWT inválido ou expirado." });
-    }
+  try {
+    const { sub, role } = jwt.verify(token, config.jwtSecret) as ITokenPayload;
+    req.user = { id: sub, role };
+    return next();
+  } catch {
+    throw unauthorized("Token JWT inválido ou expirado.");
+  }
 }
