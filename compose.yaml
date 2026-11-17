@@ -1,0 +1,13 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: sportspot-rabbitmq
+    ports:
+      # Publicadas só em 127.0.0.1: o broker não fica acessível para outras máquinas da rede
+      - "127.0.0.1:5672:5672"     # protocolo AMQP: a API e os consumidores se conectam aqui
+      - "127.0.0.1:15672:15672"   # painel web de gerenciamento (guest / guest)
+    volumes:
+      - rabbitmq-dados:/var/lib/rabbitmq   # filas durable e mensagens persistent sobrevivem a um restart
+
+volumes:
+  rabbitmq-dados:

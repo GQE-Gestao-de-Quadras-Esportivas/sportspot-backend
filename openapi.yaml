@@ -1,0 +1,458 @@
+openapi: 3.1.0
+info:
+  title: SportSpot — API REST
+  version: 1.0.0
+  description: |
+    API de gestão de quadras esportivas: proprietários cadastram quadras e
+    jogadores fazem reservas de horário.
+
+    Todas as respostas de erro seguem Problem Details (RFC 9457), com o tipo
+    de mídia `application/problem+json`.
+
+    Convenção de erros:
+    - **400**: requisição malformada (campo ausente, tipo errado, JSON inválido)
+    - **401**: sem token JWT ou token inválido
+    - **403**: autenticado, mas sem permissão sobre o recurso
+    - **404**: recurso inexistente
+    - **409**: conflito com o estado atual (horário ocupado, quadra com reservas)
+    - **422**: valor bem formado que viola uma regra de negócio
+servers:
+  - url: http://127.0.0.1:3000/v1/api
+    description: API direta (só acessível na própria máquina)
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Quadras
+  - name: Reservas
+
+paths:
+  /courts:
+    get:
+      tags: [Quadras]
+      summary: Lista quadras com filtros, ordenação e paginação
+      parameters:
+        - { name: sport, in: query, schema: { $ref: "#/components/schemas/Sport" } }
+        - { name: groundType, in: query, schema: { $ref: "#/components/schemas/GroundType" } }
+        - { name: city, in: query, description: "Busca parcial, sem diferenciar maiúsculas", schema: { type: string } }
+        - { name: state, in: query, schema: { type: string, example: SP } }
+        - { name: minPrice, in: query, schema: { type: number } }
+        - { name: maxPrice, in: query, schema: { type: number } }
+        - { name: owner, in: query, description: "`me` lista só as quadras do usuário logado", schema: { type: string, enum: [me] } }
+        - { name: ids, in: query, description: "Até 50 UUIDs separados por vírgula (busca em lote)", schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [price, name, createdAt], default: createdAt } }
+        - { name: order, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - name: limit
+          in: query
+          description: Itens por página. Valores acima de 50 são reduzidos para 50 (teto).
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        "200":
+          description: Página de quadras
+          headers:
+            X-Total-Count: { schema: { type: integer }, description: Total de quadras que atendem aos filtros }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourtPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Quadras]
+      summary: Cadastra uma quadra
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CourtInput" }
+      responses:
+        "201":
+          description: Quadra criada
+          headers:
+            Location: { schema: { type: string }, description: "Caminho da nova quadra, ex.: /v1/api/courts/{id}" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Court" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /courts/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Quadras]
+      summary: Busca uma quadra
+      responses:
+        "200":
+          description: A quadra
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Court" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Quadras]
+      summary: Substitui todos os dados da quadra (só o proprietário)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CourtInput" }
+      responses:
+        "200":
+          description: Quadra atualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Court" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    patch:
+      tags: [Quadras]
+      summary: Altera só os campos enviados (só o proprietário)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CourtPatch" }
+      responses:
+        "200":
+          description: Quadra atualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Court" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [Quadras]
+      summary: Remove a quadra (só o proprietário e só se ela nunca teve reservas)
+      description: |
+        Remover a quadra apagaria em cascata as reservas dela, e reservas não podem ser excluídas
+        fisicamente (retenção do histórico financeiro). Por isso, quadra com histórico recebe 409.
+      responses:
+        "204": { description: Quadra removida }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: A quadra tem histórico de reservas
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+              example:
+                type: /problemas/quadra-com-historico
+                title: Quadra com histórico de reservas
+                status: 409
+                detail: A quadra tem 2 reserva(s) no histórico e não pode ser removida (retenção do histórico financeiro).
+                instance: /v1/api/courts/3f2c...
+                requestId: 6b1d...
+
+  /courts/{id}/appointments:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Reservas]
+      summary: Lista as reservas de uma quadra
+      responses:
+        "200":
+          description: Reservas em ordem de horário
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Appointment" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Reservas]
+      summary: Reserva um horário na quadra
+      description: |
+        Regras de negócio:
+        - não é possível reservar no passado (422 `agendamento-no-passado`);
+        - o término deve ser depois do início (422 `intervalo-invalido`);
+        - a duração deve ficar entre 30 minutos e 4 horas (422 `duracao-invalida`);
+        - o horário não pode se sobrepor a outra reserva confirmada da mesma quadra (409 `horario-ocupado`).
+
+        O preço é calculado pela API: preço por hora da quadra × duração.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppointmentInput" }
+      responses:
+        "201":
+          description: Reserva criada
+          headers:
+            Location: { schema: { type: string }, description: "Caminho da reserva, ex.: /v1/api/appointments/{id}" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appointment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Horário já ocupado
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+              example:
+                type: /problemas/horario-ocupado
+                title: Horário já ocupado
+                status: 409
+                detail: A quadra já tem uma reserva de 2026-12-01T22:00:00.000Z a 2026-12-02T00:00:00.000Z.
+                instance: /v1/api/courts/3f2c.../appointments
+                requestId: 6b1d...
+        "422":
+          description: Regra de horário violada
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+              example:
+                type: /problemas/agendamento-no-passado
+                title: Horário no passado
+                status: 422
+                detail: Não é possível agendar um horário que já passou.
+                instance: /v1/api/courts/3f2c.../appointments
+                requestId: 6b1d...
+
+  /appointments:
+    get:
+      tags: [Reservas]
+      summary: Lista as reservas do usuário logado
+      parameters:
+        - name: role
+          in: query
+          description: "`landlord`: reservas nas minhas quadras; `customer`: reservas que eu fiz"
+          schema: { type: string, enum: [landlord, customer], default: landlord }
+      responses:
+        "200":
+          description: Reservas
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Appointment" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /appointments/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Reservas]
+      summary: Busca uma reserva
+      responses:
+        "200":
+          description: A reserva
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appointment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Reservas]
+      summary: Cancela a reserva (quem reservou ou o dono da quadra, com 24 h de antecedência)
+      description: |
+        Cancelamento lógico: a reserva sai de uso (status `cancelada`, o horário fica livre),
+        mas o registro continua no banco. Reservas nunca são excluídas fisicamente.
+      responses:
+        "204": { description: Reserva cancelada }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: A reserva já estava cancelada
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: Cancelamento com menos de 24 h de antecedência
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+              example:
+                type: /problemas/cancelamento-fora-do-prazo
+                title: Cancelamento fora do prazo
+                status: 422
+                detail: Reservas só podem ser canceladas com 24 h de antecedência (faltam 2.0 h).
+                instance: /v1/api/appointments/9a1e...
+                requestId: 6b1d...
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token obtido em POST /auth/login
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  schemas:
+    Sport:
+      type: string
+      enum: [futebol, basquete, volei, tennis]
+    GroundType:
+      type: string
+      enum: [grama_natural, grama_sintetica, parquet, cimento, areia]
+    Resource:
+      type: string
+      enum: [cobertura, iluminacao, vestiario]
+
+    CourtInput:
+      type: object
+      required: [court_name, sport, price, ground_type, cep, address, address_number, neighborhood, city, state]
+      properties:
+        court_name: { type: string, example: Arena Central }
+        sport: { $ref: "#/components/schemas/Sport" }
+        price: { type: number, exclusiveMinimum: 0, maximum: 10000, description: Preço por hora, example: 120 }
+        ground_type: { $ref: "#/components/schemas/GroundType" }
+        cep: { type: string, description: 8 dígitos (o hífen é removido), example: 01310-100 }
+        address: { type: string, example: Av. Paulista }
+        address_number: { type: string, maxLength: 6, example: "1000" }
+        neighborhood: { type: string, example: Bela Vista }
+        city: { type: string, example: São Paulo }
+        state: { type: string, pattern: "^[A-Za-z]{2}$", example: SP }
+        description: { type: string }
+        resources: { type: array, items: { $ref: "#/components/schemas/Resource" } }
+    CourtPatch:
+      description: Qualquer subconjunto dos campos de CourtInput (pelo menos um)
+      type: object
+      minProperties: 1
+      properties:
+        court_name: { type: string }
+        sport: { $ref: "#/components/schemas/Sport" }
+        price: { type: number, exclusiveMinimum: 0, maximum: 10000 }
+        ground_type: { $ref: "#/components/schemas/GroundType" }
+        cep: { type: string }
+        address: { type: string }
+        address_number: { type: string, maxLength: 6 }
+        neighborhood: { type: string }
+        city: { type: string }
+        state: { type: string, pattern: "^[A-Za-z]{2}$" }
+        description: { type: string }
+        resources: { type: array, items: { $ref: "#/components/schemas/Resource" } }
+      example: { price: 150 }
+    Court:
+      allOf:
+        - $ref: "#/components/schemas/CourtInput"
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            ground_type_label: { type: string, example: Grama sintética }
+            landlord_id: { type: string, format: uuid }
+            created_at: { type: string, format: date-time }
+    CourtPage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Court" } }
+        pagination:
+          type: object
+          properties:
+            page: { type: integer }
+            limit: { type: integer }
+            total: { type: integer }
+            totalPages: { type: integer }
+
+    AppointmentInput:
+      type: object
+      required: [start_time, end_time]
+      properties:
+        start_time: { type: string, format: date-time, example: "2026-12-01T19:00:00-03:00" }
+        end_time: { type: string, format: date-time, example: "2026-12-01T21:00:00-03:00" }
+    Appointment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        court_id: { type: string, format: uuid }
+        customer_id: { type: [string, "null"], format: uuid }
+        start_time: { type: string, format: date-time }
+        end_time: { type: string, format: date-time }
+        price: { type: number, description: Preço por hora × duração, example: 240 }
+        status: { type: string, enum: [confirmada, cancelada] }
+        cancelled_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+
+    Problem:
+      type: object
+      description: Problem Details (RFC 9457)
+      required: [type, title, status]
+      properties:
+        type: { type: string, example: /problemas/horario-ocupado }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        requestId: { type: string, description: X-Request-Id da requisição que gerou o erro }
+        errors:
+          type: array
+          description: Detalhe por campo (400 e 422 de validação)
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
+
+  responses:
+    BadRequest:
+      description: Requisição malformada
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            type: /problemas/requisicao-invalida
+            title: Requisição inválida
+            status: 400
+            detail: Há campos ausentes ou com tipo errado.
+            instance: /v1/api/courts
+            requestId: 6b1d...
+            errors: [{ field: price, message: obrigatório }]
+    Unauthorized:
+      description: Sem token ou token inválido
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            type: /problemas/nao-autenticado
+            title: Não autenticado
+            status: 401
+            detail: Token JWT não fornecido no cabeçalho Authorization.
+            instance: /v1/api/courts
+            requestId: 6b1d...
+    Forbidden:
+      description: Sem permissão sobre o recurso
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: Recurso inexistente
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            type: /problemas/nao-encontrado
+            title: Recurso não encontrado
+            status: 404
+            detail: A quadra 3f2c... não existe.
+            instance: /v1/api/courts/3f2c...
+            requestId: 6b1d...
+    Unprocessable:
+      description: Valor viola uma regra do domínio
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            type: /problemas/dados-invalidos
+            title: Dados inválidos para uma quadra
+            status: 422
+            detail: Um ou mais valores não são aceitos.
+            instance: /v1/api/courts
+            requestId: 6b1d...
+            errors: [{ field: sport, message: "use um destes: futebol, basquete, volei, tennis" }]

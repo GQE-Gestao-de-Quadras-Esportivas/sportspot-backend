@@ -1,0 +1,15 @@
+{
+  "name": "sportspot-mensageria",
+  "version": "1.0.0",
+  "description": "Consumidores de eventos do SportSpot (RabbitMQ)",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "notificacoes": "node notificacoes.js",
+    "faturamento": "node faturamento.js"
+  },
+  "dependencies": {
+    "amqplib": "^2.4.0"
+  }
+}

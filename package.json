@@ -1,34 +1,30 @@
 {
-  "name": "sportspot-backend",
-  "version": "0.0.1",
-  "description": "Awesome project developed with TypeORM.",
+  "name": "sportspot-tutoriais",
+  "version": "1.0.0",
+  "private": true,
   "type": "module",
-  "devDependencies": {
-    "@types/bcrypt": "^6.0.0",
-    "@types/cookie-parser": "^1.4.10",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^20.19.43",
-    "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
-    "tsx": "^4.22.5",
-    "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "bcrypt": "^6.0.0",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
-    "pg": "^8.22.0",
-    "reflect-metadata": "^0.2.2",
-    "typeorm": "1.0.0"
+  "description": "SportSpot (Grupo 03): API REST, mensageria, GraphQL e API Gateway",
+  "engines": {
+    "node": ">=22"
   },
   "scripts": {
-    "start": "ts-node src/index.ts",
-    "typeorm": "typeorm-ts-node-commonjs",
-    "dev": "tsx watch src/server.ts"
+    "instalar": "node testes/instalar.js",
+    "rest": "npm --prefix rest start",
+    "notificacoes": "npm --prefix mensageria run notificacoes",
+    "faturamento": "npm --prefix mensageria run faturamento",
+    "graphql": "npm --prefix graphql start",
+    "gateway": "npm --prefix gateway start",
+    "status": "node testes/status.js",
+    "seed": "node testes/seed.js",
+    "cliente": "node testes/cliente.js",
+    "cliente:gateway": "node testes/cliente.js --gateway",
+    "evento:falha": "node testes/evento-falha.js",
+    "evento:duplicado": "node testes/evento-duplicado.js",
+    "teste:graphql": "node testes/teste-graphql.js",
+    "teste:gateway": "node testes/teste-gateway.js",
+    "teste:painel": "node testes/teste-painel.js"
+  },
+  "dependencies": {
+    "amqplib": "^2.4.0"
   }
 }

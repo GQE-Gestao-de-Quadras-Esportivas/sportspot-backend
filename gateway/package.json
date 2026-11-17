@@ -1,0 +1,14 @@
+{
+  "name": "sportspot-gateway",
+  "version": "1.0.0",
+  "description": "API Gateway do SportSpot: ponto único de entrada para a API REST e o GraphQL",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
